@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.config import settings
 from app.core.database import Base
-import app.models  # noqa: F401 - asegura que los modelos se registren en Base.metadata
+from app.models.user import User
+from app.models.prediction import Prediction
 
 config = context.config
 config.set_main_option("sqlalchemy.url", str(settings.database_url))

@@ -3,13 +3,13 @@ import sys
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from telegram.ext import Application
 
 from app.core.config import settings
 from app.core.database import db_manager, init_db
-from app.telegram.bot import create_bot_application
+from app.telegram.bot import create_bot_application, send_recommendation, send_no_recommendation, send_results_summary
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper()),
@@ -26,13 +26,13 @@ telegram_app: Application | None = None
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global telegram_app
 
-    logger.info("Iniciando aplicación...")
+    logger.info("Iniciando aplicacion...")
 
     logger.info("Inicializando base de datos...")
     await init_db()
     logger.info("Base de datos inicializada correctamente")
 
-    logger.info("Creando aplicación del bot de Telegram...")
+    logger.info("Creando aplicacion del bot de Telegram...")
     telegram_app = create_bot_application()
     await telegram_app.initialize()
     await telegram_app.start()
@@ -51,14 +51,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             drop_pending_updates=True,
         )
 
-    logger.info("Aplicación iniciada correctamente")
+    logger.info("Aplicacion iniciada correctamente")
 
     yield
 
-    logger.info("Iniciando apagado de la aplicación...")
+    logger.info("Iniciando apagado de la aplicacion...")
 
     if telegram_app:
-        logger.info("Deteniendo aplicación del bot de Telegram...")
+        logger.info("Deteniendo aplicacion del bot de Telegram...")
         await telegram_app.stop()
         await telegram_app.shutdown()
 
@@ -66,7 +66,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await db_manager.close()
     logger.info("Conexiones de base de datos cerradas")
 
-    logger.info("Apagado de aplicación completado")
+    logger.info("Apagado de aplicacion completado")
+
+
+def _validate_cron_secret(secret: str) -> None:
+    if secret != settings.cron_secret:
+        raise HTTPException(status_code=403, detail="cron_secret invalido")
 
 
 def create_application() -> FastAPI:
@@ -93,6 +98,130 @@ def create_application() -> FastAPI:
     @app.get("/ready", tags=["Salud"])
     async def readiness_check() -> dict[str, str]:
         return {"status": "listo", "service": settings.app_name}
+
+    @app.get("/cron/odds", tags=["Cron"])
+    async def cron_odds(
+        secret: str = Query(..., description="cron_secret"),
+    ) -> dict:
+        _validate_cron_secret(secret)
+
+        from app.services.odds.client import get_odds
+        from app.services.strategy.engine import analyze_and_recommend
+
+        all_odds = {}
+        sports = ["soccer", "tennis", "basketball", "table_tennis"]
+        for sport in sports:
+            try:
+                data = await get_odds(sport)
+                all_odds[sport] = data
+            except Exception as e:
+                logger.warning(f"Error obteniendo odds de {sport}: {e}")
+                continue
+
+        if not all_odds:
+            if telegram_app:
+                await send_no_recommendation(telegram_app)
+            return {"status": "sin_datos", "detail": "no se pudieron obtener odds"}
+
+        recommendation = analyze_and_recommend(all_odds)
+        if recommendation and recommendation.get("simple"):
+            if telegram_app:
+                await send_recommendation(telegram_app, recommendation)
+            return {
+                "status": "ok",
+                "total_events_analyzed": recommendation["total_events_analyzed"],
+                "has_simple": True,
+                "has_combined": recommendation.get("combined") is not None,
+            }
+        else:
+            if telegram_app:
+                await send_no_recommendation(telegram_app)
+            return {"status": "sin_recomendaciones", "detail": "no se encontraron recomendaciones"}
+
+    @app.get("/cron/check", tags=["Cron"])
+    async def cron_check(
+        secret: str = Query(..., description="cron_secret"),
+    ) -> dict:
+        _validate_cron_secret(secret)
+
+        from datetime import UTC, datetime
+        from sqlalchemy import select
+        from app.models.prediction import Prediction, PredictionStatus
+
+        async with db_manager.session() as session:
+            result = await session.execute(
+                select(Prediction)
+                .where(Prediction.is_combined == False, Prediction.status == PredictionStatus.PENDING)
+                .limit(50)
+            )
+            pending = result.scalars().all()
+
+            if not pending:
+                return {"status": "ok", "checked": 0, "results": []}
+
+            from app.services.odds.client import get_scores
+
+            sport_events: dict[str, list[str]] = {}
+            for p in pending:
+                sport_events.setdefault(p.sport, []).append(p.event_id)
+
+            results = []
+            for sport, event_ids in sport_events.items():
+                try:
+                    scores_data = await get_scores(sport, event_ids)
+                except Exception as e:
+                    logger.warning(f"Error obteniendo scores de {sport}: {e}")
+                    continue
+
+                for event in scores_data:
+                    completed = event.get("completed")
+                    scores = event.get("scores", [])
+                    if not completed or not scores:
+                        continue
+
+                    event_id = event.get("id")
+                    home_score = None
+                    away_score = None
+                    for s in scores:
+                        if s.get("name") == event.get("home_team"):
+                            home_score = s.get("score")
+                        elif s.get("name") == event.get("away_team"):
+                            away_score = s.get("score")
+
+                    if home_score is None or away_score is None:
+                        continue
+
+                    for p in pending:
+                        if p.event_id != event_id:
+                            continue
+                        pred_selection = p.selection.lower()
+                        home_name = (p.home_team or "").lower()
+                        away_name = (p.away_team or "").lower()
+
+                        if pred_selection == home_name:
+                            won = int(home_score) > int(away_score)
+                        elif pred_selection == away_name:
+                            won = int(away_score) > int(home_score)
+                        else:
+                            won = False
+
+                        p.status = PredictionStatus.WON if won else PredictionStatus.LOST
+                        p.units_returned = (p.odds * p.units_staked) if won else Decimal("0")
+                        p.settled_at = datetime.now(UTC)
+
+                        results.append({
+                            "home_team": p.home_team,
+                            "away_team": p.away_team,
+                            "selection": p.selection,
+                            "status": "won" if won else "lost",
+                        })
+
+            await session.flush()
+
+        if results and telegram_app:
+                await send_results_summary(telegram_app, results)
+
+        return {"status": "ok", "checked": len(results), "results": results}
 
     return app
 

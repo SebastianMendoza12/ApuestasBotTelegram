@@ -5,21 +5,22 @@ from telegram.ext import CommandHandler, ContextTypes
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     await update.message.reply_html(
-        f"¡Hola {user.mention_html()}! Bienvenido al Bot de Apuestas.\n\n"
-        "Comandos disponibles:\n"
-        "/balance - Consultar tu saldo\n"
-        "/apostar &lt;monto&gt; &lt;equipo&gt; - Realizar una apuesta\n"
+        f"!hola {user.mention_html()}! Soy tu Bot de Apuestas automatico.\n\n"
+        "envio recomendaciones automaticas a las 8 AM y 5 PM.\n\n"
+        "comandos:\n"
+        "/historial - Ver historial de predicciones\n"
+        "/stats - Ver estadisticas\n"
         "/ayuda - Mostrar ayuda"
     )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "Comandos disponibles:\n"
+        "comandos disponibles:\n"
         "/start - Iniciar el bot\n"
         "/ayuda - Mostrar esta ayuda\n"
-        "/balance - Consultar tu saldo\n"
-        "/apostar &lt;monto&gt; &lt;equipo&gt; - Realizar una apuesta\n"
+        "/historial - Ver historial de predicciones\n"
+        "/stats - Ver estadisticas"
     )
 
 
