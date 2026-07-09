@@ -13,8 +13,8 @@ COL_OFFSET = timedelta(hours=-5)
 def _get_session_window(session: str | None = None) -> tuple[datetime, datetime]:
     """Retorna (inicio_utc, fin_utc) segun el turno.
 
-    morning: eventos entre 10:00 y 23:59 Colombia (apostar 10am-7pm)
-    evening: eventos entre 19:00 hoy y 10:00 manana Colombia (apostar 7pm-10am)
+    morning: eventos entre 10:00 y 18:59 Colombia (apostar 10am-7pm)
+    evening: eventos entre 19:00 hoy y 09:59 manana Colombia (apostar 7pm-10am)
     """
     now_utc = datetime.now(UTC)
     col_now = now_utc + COL_OFFSET
@@ -26,12 +26,12 @@ def _get_session_window(session: str | None = None) -> tuple[datetime, datetime]
         start_col = col_now.replace(hour=10, minute=0, second=0, microsecond=0)
         if col_now > start_col:
             start_col = col_now
-        end_col = col_now.replace(hour=23, minute=59, second=59, microsecond=0)
+        end_col = col_now.replace(hour=18, minute=59, second=59, microsecond=0)
     else:
         start_col = col_now.replace(hour=19, minute=0, second=0, microsecond=0)
         if col_now > start_col:
             start_col = col_now
-        end_col = (col_now + timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+        end_col = (col_now + timedelta(days=1)).replace(hour=9, minute=59, second=59, microsecond=0)
 
     return start_col - COL_OFFSET, end_col - COL_OFFSET
 
