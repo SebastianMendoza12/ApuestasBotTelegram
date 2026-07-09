@@ -26,3 +26,4 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 start_handler = CommandHandler("start", start_command)
 help_handler = CommandHandler("help", help_command)
+ayuda_handler = CommandHandler("ayuda", help_command)
