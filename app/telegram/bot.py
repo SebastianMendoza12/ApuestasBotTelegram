@@ -15,6 +15,35 @@ from app.telegram.handlers import register_handlers
 
 logger = logging.getLogger(__name__)
 
+BOOKMAKER_DISPLAY: dict[str, str] = {
+    "pinnacle": "Pinnacle", "betfair_ex_uk": "Betfair", "betfair_ex_eu": "Betfair",
+    "betway": "Betway", "betvictor": "Bet Victor", "codere_it": "Codere",
+    "unibet_uk": "Unibet", "unibet_fr": "Unibet", "unibet_nl": "Unibet",
+    "unibet_se": "Unibet", "unibet_it": "Unibet", "unibet": "Unibet",
+    "onexbet": "1xBet", "betsson": "Betsson", "marathonbet": "Marathonbet",
+    "sport888": "888sport", "tipico_de": "Tipico", "winamax_de": "Winamax",
+    "winamax_fr": "Winamax", "leovegas": "LeoVegas", "leovegas_se": "LeoVegas",
+    "draftkings": "DraftKings", "fanduel": "FanDuel", "betmgm": "BetMGM",
+    "betrivers": "BetRivers", "bovada": "Bovada", "williamhill": "William Hill",
+    "ladbrokes_uk": "Ladbrokes", "ladbrokes_au": "Ladbrokes",
+    "paddypower": "Paddy Power", "skybet": "Sky Bet", "betfred_uk": "Betfred",
+    "bet365_au": "Bet365", "coolbet": "Coolbet", "suprabets": "Suprabets",
+    "casumo": "Casumo", "coral": "Coral", "smarkets": "Smarkets",
+    "matchbook": "Matchbook", "everygame": "Everygame", "mybookieag": "MyBookie",
+    "betonlineag": "BetOnline", "betanysports": "BetAnySports", "gtbets": "GTbets",
+    "nordicbet": "NordicBet", "boylesports": "BoyleSports", "virginbet": "Virgin Bet",
+    "livescorebet": "LiveScore Bet", "grosvenor": "Grosvenor",
+    "betus": "BetUS", "lowvig": "LowVig", "pointsbetau": "PointsBet",
+    "sportsbet": "SportsBet", "tab": "TAB", "neds": "Neds",
+    "betclic_fr": "Betclic", "pmu_fr": "PMU", "netbet_fr": "NetBet",
+    "ballybet": "Bally Bet", "betparx": "betPARX", "espnbet": "ESPN Bet",
+    "fliff": "Fliff", "hardrockbet": "Hard Rock Bet",
+}
+
+
+def _disp_bm(key: str) -> str:
+    return BOOKMAKER_DISPLAY.get(key, key.replace("_", " ").title())
+
 
 def create_bot_application() -> Application:
     request = HTTPXRequest(
@@ -120,12 +149,12 @@ async def send_recommendation(application: Application, recommendation: dict) ->
     lines = [f"\U0001f3af RECOMENDACION #{prediction_id}"]
     lines.append(f"{se} {simple['home_team']} vs {simple['away_team']}")
     lines.append(f"seleccion: {simple['selection']}")
-    lines.append(f"cuota: @{simple['odds']} ({simple['bookmaker']})")
+    lines.append(f"cuota: @{simple['odds']} ({_disp_bm(simple['bookmaker'])})")
     lines.append(f"inicio: {simple['event_start_time'][:16].replace('T', ' ')}")
     lines.append(f"\n\U0001f4c8 por que: {simple['reasoning']}")
 
     if combined:
-        lines.append(f"\n\U0001f4af COMBINADA (x{combined['num_legs']}) {combined['bookmaker'].upper()}")
+        lines.append(f"\n\U0001f4af COMBINADA (x{combined['num_legs']}) {_disp_bm(combined['bookmaker']).upper()}")
         for i, leg in enumerate(combined["legs"], 1):
             se2 = emoji_sport.get(leg["sport"], "\U0001f3b2")
             lines.append(f"{i}. {se2} {leg['home_team']} vs {leg['away_team']} -> {leg['selection']} @ {leg['odds']}")
