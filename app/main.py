@@ -53,18 +53,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     else:
         logger.info("iniciando polling del bot...")
         try:
-            polling_tasks = await telegram_app.updater.start_polling(
+            await telegram_app.updater.start_polling(
                 allowed_updates=settings.telegram_allowed_updates,
                 drop_pending_updates=True,
                 error_callback=_polling_error,
             )
-            if all(t.done() for t in polling_tasks):
-                logger.error("las tareas de polling terminaron inmediatamente!")
-                for t in polling_tasks:
-                    if t.exception():
-                        logger.error("excepcion en tarea de polling: %s", t.exception())
-            else:
-                logger.info("polling iniciado con %d tarea(s)", len(polling_tasks))
+            logger.info("polling iniciado correctamente")
         except Exception as e:
             logger.error("error iniciando polling: %s", e)
             raise
