@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -23,51 +24,68 @@ logger = logging.getLogger(__name__)
 telegram_app: Application | None = None
 
 
+async def _polling_error(error: Exception) -> None:
+    logger.error("Error en polling de Telegram: %s", error, exc_info=error)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global telegram_app
 
-    logger.info("Iniciando aplicacion...")
+    logger.info("iniciando aplicacion...")
 
-    logger.info("Inicializando base de datos...")
+    logger.info("inicializando base de datos...")
     await init_db()
-    logger.info("Base de datos inicializada correctamente")
+    logger.info("base de datos inicializada correctamente")
 
-    logger.info("Creando aplicacion del bot de Telegram...")
+    logger.info("creando aplicacion del bot de telegram...")
     telegram_app = create_bot_application()
     await telegram_app.initialize()
     await telegram_app.start()
 
     if settings.telegram_webhook_url:
-        logger.info(f"Configurando webhook en {settings.telegram_webhook_url}")
+        logger.info("configurando webhook en %s", settings.telegram_webhook_url)
         await telegram_app.bot.set_webhook(
             url=settings.telegram_webhook_url,
             secret_token=settings.telegram_webhook_secret,
             allowed_updates=settings.telegram_allowed_updates,
         )
     else:
-        logger.info("Iniciando polling del bot...")
-        await telegram_app.updater.start_polling(
-            allowed_updates=settings.telegram_allowed_updates,
-            drop_pending_updates=True,
-        )
+        logger.info("iniciando polling del bot...")
+        try:
+            polling_tasks = await telegram_app.updater.start_polling(
+                allowed_updates=settings.telegram_allowed_updates,
+                drop_pending_updates=True,
+                error_callback=_polling_error,
+            )
+            if all(t.done() for t in polling_tasks):
+                logger.error("las tareas de polling terminaron inmediatamente!")
+                for t in polling_tasks:
+                    if t.exception():
+                        logger.error("excepcion en tarea de polling: %s", t.exception())
+            else:
+                logger.info("polling iniciado con %d tarea(s)", len(polling_tasks))
+        except Exception as e:
+            logger.error("error iniciando polling: %s", e)
+            raise
 
-    logger.info("Aplicacion iniciada correctamente")
+    logger.info("aplicacion iniciada correctamente")
 
     yield
 
-    logger.info("Iniciando apagado de la aplicacion...")
+    logger.info("iniciando apagado de la aplicacion...")
 
     if telegram_app:
-        logger.info("Deteniendo aplicacion del bot de Telegram...")
+        if telegram_app.updater:
+            try:
+                await telegram_app.updater.stop()
+            except Exception as e:
+                logger.error("error al detener updater: %s", e)
         await telegram_app.stop()
         await telegram_app.shutdown()
 
-    logger.info("Cerrando conexiones de base de datos...")
     await db_manager.close()
-    logger.info("Conexiones de base de datos cerradas")
-
-    logger.info("Apagado de aplicacion completado")
+    logger.info("apagado de aplicacion completado")
 
 
 def _validate_cron_secret(secret: str) -> None:
@@ -103,6 +121,26 @@ def create_application() -> FastAPI:
     @app.get("/ping", tags=["Salud"])
     async def ping() -> PlainTextResponse:
         return PlainTextResponse("pong")
+
+    @app.get("/bot-status", tags=["Salud"])
+    async def bot_status() -> dict:
+        if not telegram_app:
+            return {"running": False, "polling": False, "razon": "no hay instancia del bot"}
+        try:
+            bot_info = await telegram_app.bot.get_me()
+            username = bot_info.username
+        except Exception:
+            username = None
+        updater = telegram_app.updater
+        try:
+            polling_running = getattr(updater, 'running', False)
+        except Exception:
+            polling_running = False
+        return {
+            "running": telegram_app.running,
+            "polling": polling_running,
+            "bot_username": username,
+        }
 
     @app.get("/cron/odds", tags=["Cron"])
     async def cron_odds(
