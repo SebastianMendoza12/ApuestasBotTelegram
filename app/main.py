@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 telegram_app: Application | None = None
 
 
-async def _polling_error(error: Exception) -> None:
+def _polling_error(error: Exception) -> None:
     logger.error("Error en polling de Telegram: %s", error, exc_info=error)
 
 
