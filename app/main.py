@@ -5,6 +5,7 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from telegram.ext import Application
 
 from app.core.config import settings
@@ -92,12 +93,12 @@ def create_application() -> FastAPI:
     )
 
     @app.get("/health", tags=["Salud"])
-    async def health_check() -> dict[str, str]:
-        return {"status": "saludable", "service": settings.app_name}
+    async def health_check() -> PlainTextResponse:
+        return PlainTextResponse("ok")
 
     @app.get("/ready", tags=["Salud"])
-    async def readiness_check() -> dict[str, str]:
-        return {"status": "listo", "service": settings.app_name}
+    async def readiness_check() -> PlainTextResponse:
+        return PlainTextResponse("ok")
 
     @app.get("/cron/odds", tags=["Cron"])
     async def cron_odds(
