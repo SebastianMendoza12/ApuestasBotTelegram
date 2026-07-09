@@ -100,6 +100,10 @@ def create_application() -> FastAPI:
     async def readiness_check() -> PlainTextResponse:
         return PlainTextResponse("ok")
 
+    @app.get("/ping", tags=["Salud"])
+    async def ping() -> PlainTextResponse:
+        return PlainTextResponse("pong")
+
     @app.get("/cron/odds", tags=["Cron"])
     async def cron_odds(
         secret: str = Query(..., description="cron_secret"),
