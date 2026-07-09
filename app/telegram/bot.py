@@ -1,6 +1,7 @@
 import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from html import escape
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -157,56 +158,75 @@ async def send_recommendation(application: Application, recommendation: dict) ->
 
     emoji_sport = {"soccer": "\u26bd", "tennis": "\U0001f3be", "basketball": "\U0001f3c0", "table_tennis": "\U0001f3d3"}
     se = emoji_sport.get(simple["sport"], "\U0001f3b2")
+    ht = escape(simple["home_team"])
+    aw = escape(simple["away_team"])
+    sel = escape(simple["selection"])
+    bm = _disp_bm(simple["bookmaker"])
 
-    lines = [f"\U0001f3af RECOMENDACION #{prediction_id}"]
-    lines.append(f"{se} {simple['home_team']} vs {simple['away_team']}")
-    lines.append(f"seleccion: {simple['selection']}")
-    lines.append(f"cuota: @{simple['odds']} ({_disp_bm(simple['bookmaker'])})")
-    lines.append(f"inicio: {_colombia_time(simple['event_start_time'])}")
+    lines = [f"\U0001f3af <b>RECOMENDACION #{prediction_id}</b>"]
+    lines.append("")
+    lines.append(f"{se} <b>{ht} vs {aw}</b>")
+    lines.append("")
+    lines.append(f"\U0001f3af <b>Seleccion:</b> {sel}")
+    lines.append(f"\U0001f4b0 <b>Cuota:</b> <code>@{simple['odds']}</code> ({bm})")
+    lines.append(f"\u23f0 <b>Inicio:</b> {_colombia_time(simple['event_start_time'])}")
 
     stats = simple.get("stats")
     if stats:
         h_form = stats.get("home_form", "")
         a_form = stats.get("away_form", "")
-        h_name = stats.get("home_api_name", simple["home_team"])
-        a_name = stats.get("away_api_name", simple["away_team"])
+        h_name = escape(stats.get("home_api_name", ht))
+        a_name = escape(stats.get("away_api_name", aw))
         if h_form and a_form:
-            lines.append(f"\U0001f4ca forma: {h_name} ({h_form}) vs {a_name} ({a_form})")
+            lines.append(f"\U0001f4ca <b>Forma:</b> {h_name} ({h_form}) vs {a_name} ({a_form})")
         h2h = stats.get("h2h_record", "")
         if h2h:
-            lines.append(f"\U0001f4ca historial: {h2h}")
+            lines.append(f"\U0001f4ca <b>H2H:</b> {h2h}")
 
-    lines.append(f"\n\U0001f4c8 por que: {simple['reasoning']}")
+    lines.append("")
+    lines.append(f"\U0001f4c8 <b>Analisis:</b> {escape(simple['reasoning'])}")
 
     if combined:
-        lines.append(f"\n\U0001f4af COMBINADA (x{combined['num_legs']}) {_disp_bm(combined['bookmaker']).upper()}")
+        bm_c = _disp_bm(combined["bookmaker"])
+        lines.append("")
+        lines.append(f"\U0001f4a5 <b>COMBINADA (x{combined['num_legs']}) {bm_c.upper()}</b>")
         for i, leg in enumerate(combined["legs"], 1):
             se2 = emoji_sport.get(leg["sport"], "\U0001f3b2")
-            lines.append(f"{i}. {se2} {leg['home_team']} vs {leg['away_team']} -> {leg['selection']} @ {leg['odds']}")
-        lines.append(f"\U0001f4b0 cuota total: @{combined['total_odds']}")
+            lht = escape(leg["home_team"])
+            law = escape(leg["away_team"])
+            lsel = escape(leg["selection"])
+            short = lht if len(lht) <= 15 else lht[:12] + "..."
+            lines.append(f"{i}.{se2} {short} vs {law[:12]}... \u2192 <b>{lsel}</b> <code>@{leg['odds']}</code>")
+        lines.append("")
+        lines.append(f"\U0001f4b0 <b>Total:</b> <code>@{combined['total_odds']}</code>")
 
-    await application.bot.send_message(chat_id=chat_id, text="\n".join(lines))
+    await application.bot.send_message(chat_id=chat_id, text="\n".join(lines), parse_mode="HTML")
 
 
 async def send_results_summary(application: Application, results: list[dict]) -> None:
     if not results:
         return
-    lines = ["\u2705 RESULTADOS DEL DIA"]
+    lines = ["\u2705 <b>RESULTADOS DEL DIA</b>", ""]
     won = 0
     lost = 0
     for r in results:
+        ht = escape(r.get("home_team", ""))
+        aw = escape(r.get("away_team", ""))
+        sel = escape(r.get("selection", ""))
         if r["status"] == "won":
             won += 1
-            lines.append(f"\u2705 {r['home_team']} vs {r['away_team']} -> {r['selection']} GANO")
+            lines.append(f"\u2705 {ht} vs {aw} \u2192 <b>{sel}</b> GANO")
         else:
             lost += 1
-            lines.append(f"\u274c {r['home_team']} vs {r['away_team']} -> {r['selection']} PERDIO")
-    lines.append(f"\naciertos: {won} | fallos: {lost}")
-    await application.bot.send_message(chat_id=settings.admin_telegram_id, text="\n".join(lines))
+            lines.append(f"\u274c {ht} vs {aw} \u2192 <b>{sel}</b> PERDIO")
+    lines.append("")
+    lines.append(f"<b>Aciertos:</b> {won} | <b>Fallos:</b> {lost}")
+    await application.bot.send_message(chat_id=settings.admin_telegram_id, text="\n".join(lines), parse_mode="HTML")
 
 
 async def send_no_recommendation(application: Application) -> None:
     await application.bot.send_message(
         chat_id=settings.admin_telegram_id,
         text="no se encontraron recomendaciones disponibles en este momento",
+        parse_mode="HTML",
     )
