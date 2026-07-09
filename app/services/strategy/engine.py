@@ -1,11 +1,39 @@
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from statistics import mean
 
 from app.services.stats.analyzer import analyze_match
 
 logger = logging.getLogger(__name__)
+
+COL_OFFSET = timedelta(hours=-5)
+
+
+def _get_session_window(session: str | None = None) -> tuple[datetime, datetime]:
+    """Retorna (inicio_utc, fin_utc) segun el turno.
+
+    morning: eventos entre 10:00 y 23:59 Colombia (apostar 10am-7pm)
+    evening: eventos entre 19:00 hoy y 10:00 manana Colombia (apostar 7pm-10am)
+    """
+    now_utc = datetime.now(UTC)
+    col_now = now_utc + COL_OFFSET
+
+    if session is None or session == "auto":
+        session = "morning" if col_now.hour < 12 else "evening"
+
+    if session == "morning":
+        start_col = col_now.replace(hour=10, minute=0, second=0, microsecond=0)
+        if col_now > start_col:
+            start_col = col_now
+        end_col = col_now.replace(hour=23, minute=59, second=59, microsecond=0)
+    else:
+        start_col = col_now.replace(hour=19, minute=0, second=0, microsecond=0)
+        if col_now > start_col:
+            start_col = col_now
+        end_col = (col_now + timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+
+    return start_col - COL_OFFSET, end_col - COL_OFFSET
 
 BOOKMAKER_NAMES: dict[str, str] = {
     "pinnacle": "Pinnacle",
@@ -103,7 +131,8 @@ SPORT_EMOJIS = {
 }
 
 
-async def analyze_and_recommend(all_odds: dict[str, list[dict]]) -> dict | None:
+async def analyze_and_recommend(all_odds: dict[str, list[dict]], session: str | None = None) -> dict | None:
+    start_window, end_window = _get_session_window(session)
     now = datetime.now(UTC)
     all_events: list[dict] = []
 
@@ -117,7 +146,7 @@ async def analyze_and_recommend(all_odds: dict[str, list[dict]]) -> dict | None:
                 start_dt = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
             except ValueError:
                 continue
-            if start_dt < now or (start_dt - now).total_seconds() > 72 * 3600:
+            if start_dt < start_window or start_dt > end_window:
                 continue
             event_data = {
                 "sport": sport_name,

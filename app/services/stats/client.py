@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime
+from datetime import date, timedelta
 
 import httpx
 
@@ -13,23 +13,30 @@ API_KEY = settings.football_api_key
 HEADERS = {"x-apisports-key": API_KEY} if API_KEY else {}
 
 
-async def get_today_fixtures() -> list[dict]:
-    today = date.today().isoformat()
-    cache_key = f"football_fixtures_{today}"
-    cached = cache.get(cache_key)
-    if cached:
-        return cached
-    url = f"{BASE_URL}/fixtures"
-    params = {"date": today}
-    async with httpx.AsyncClient(timeout=15, headers=HEADERS) as client:
-        r = await client.get(url, params=params)
-        if r.status_code != 200:
-            logger.warning("api-football fixtures error: %s %s", r.status_code, r.text[:200])
-            return []
-        data = r.json()
-    result = data.get("response", [])
-    cache.set(cache_key, result)
-    return result
+async def get_fixtures_for_range(num_days: int = 2) -> list[dict]:
+    """Retorna fixtures desde hoy hasta num_days en el futuro."""
+    today = date.today()
+    all_fixtures = []
+    for i in range(num_days):
+        d = today + timedelta(days=i)
+        ds = d.isoformat()
+        cache_key = f"football_fixtures_{ds}"
+        cached = cache.get(cache_key)
+        if cached:
+            all_fixtures.extend(cached)
+            continue
+        url = f"{BASE_URL}/fixtures"
+        params = {"date": ds}
+        async with httpx.AsyncClient(timeout=15, headers=HEADERS) as client:
+            r = await client.get(url, params=params)
+            if r.status_code != 200:
+                logger.warning("api-football error %s: %s", ds, r.status_code)
+                continue
+            data = r.json()
+        result = data.get("response", [])
+        cache.set(cache_key, result)
+        all_fixtures.extend(result)
+    return all_fixtures
 
 
 def _match_team(odds_name: str, fixtures: list[dict]) -> tuple[int, str] | None:
@@ -47,7 +54,7 @@ async def get_match_stats(home_team: str, away_team: str) -> dict | None:
     if not API_KEY:
         return None
     try:
-        fixtures = await get_today_fixtures()
+        fixtures = await get_fixtures_for_range(2)
         if not fixtures:
             return None
         home_info = _match_team(home_team, fixtures)

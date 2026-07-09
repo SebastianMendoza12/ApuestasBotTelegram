@@ -141,6 +141,7 @@ def create_application() -> FastAPI:
     @app.get("/cron/odds", tags=["Cron"])
     async def cron_odds(
         secret: str = Query(..., description="cron_secret"),
+        session: str = Query("auto", description="morning | evening | auto"),
     ) -> dict:
         _validate_cron_secret(secret)
 
@@ -161,7 +162,7 @@ def create_application() -> FastAPI:
                 await send_no_recommendation(telegram_app)
             return {"status": "sin_datos", "detail": "no se pudieron obtener odds"}
 
-        recommendation = await analyze_and_recommend(all_odds)
+        recommendation = await analyze_and_recommend(all_odds, session=session)
         if recommendation and recommendation.get("simple"):
             if telegram_app:
                 await send_recommendation(telegram_app, recommendation)
