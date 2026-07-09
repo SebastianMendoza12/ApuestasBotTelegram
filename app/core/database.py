@@ -37,8 +37,14 @@ class DatabaseManager:
         if self._engine is not None:
             return
 
+        connect_args = {}
+        url_str = str(settings.database_url)
+        if settings.is_production or "neon.tech" in url_str:
+            connect_args["ssl"] = "require"
+
         self._engine = create_async_engine(
-            str(settings.database_url),
+            url_str,
+            connect_args=connect_args,
             echo=settings.debug,
             pool_size=settings.database_pool_size,
             max_overflow=settings.database_max_overflow,
