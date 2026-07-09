@@ -9,7 +9,7 @@ def register_handlers(application: Application) -> None:
 
     application.add_handler(start_handler)
     application.add_handler(help_handler)
-application.add_handler(ayuda_handler)
+    application.add_handler(ayuda_handler)
     application.add_handler(historial_handler)
     application.add_handler(stats_handler)
     application.add_error_handler(error_handler)
