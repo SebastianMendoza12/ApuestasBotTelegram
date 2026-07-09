@@ -1,6 +1,5 @@
 import logging
 from datetime import UTC, datetime
-from typing import Any
 
 import httpx
 
@@ -11,7 +10,8 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = settings.odds_api_base_url
 API_KEY = settings.odds_api_key
-SPORTS = ["soccer", "tennis", "basketball", "table_tennis"]
+SPORTS = ["soccer"]
+# SPORTS = ["soccer", "tennis", "basketball", "table_tennis"]  # reactivar cuando se agreguen estadisticas de otros deportes
 BOOKMAKERS = ""
 REGION = "us,us2,uk,eu,au,fr,se"
 MARKETS = "h2h,totals"

@@ -163,6 +163,19 @@ async def send_recommendation(application: Application, recommendation: dict) ->
     lines.append(f"seleccion: {simple['selection']}")
     lines.append(f"cuota: @{simple['odds']} ({_disp_bm(simple['bookmaker'])})")
     lines.append(f"inicio: {_colombia_time(simple['event_start_time'])}")
+
+    stats = simple.get("stats")
+    if stats:
+        h_form = stats.get("home_form", "")
+        a_form = stats.get("away_form", "")
+        h_name = stats.get("home_api_name", simple["home_team"])
+        a_name = stats.get("away_api_name", simple["away_team"])
+        if h_form and a_form:
+            lines.append(f"\U0001f4ca forma: {h_name} ({h_form}) vs {a_name} ({a_form})")
+        h2h = stats.get("h2h_record", "")
+        if h2h:
+            lines.append(f"\U0001f4ca historial: {h2h}")
+
     lines.append(f"\n\U0001f4c8 por que: {simple['reasoning']}")
 
     if combined:

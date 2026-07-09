@@ -2,7 +2,8 @@ import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 from statistics import mean
-from typing import Any
+
+from app.services.stats.analyzer import analyze_match
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ SPORT_EMOJIS = {
 }
 
 
-def analyze_and_recommend(all_odds: dict[str, list[dict]]) -> dict | None:
+async def analyze_and_recommend(all_odds: dict[str, list[dict]]) -> dict | None:
     now = datetime.now(UTC)
     all_events: list[dict] = []
 
@@ -135,6 +136,24 @@ def analyze_and_recommend(all_odds: dict[str, list[dict]]) -> dict | None:
 
     best_simple = _find_best_simple(all_events)
     best_combined = _build_best_combined(all_events)
+
+    if best_simple:
+        stats = await analyze_match(best_simple["home_team"], best_simple["away_team"])
+        if stats:
+            best_simple["stats"] = stats
+            home_f = stats.get("home_form", "")
+            away_f = stats.get("away_form", "")
+            h2h = stats.get("h2h_record", "")
+            if home_f and away_f:
+                sel = best_simple["selection"].lower()
+                home = best_simple["home_team"].lower()
+                forma_sel = home_f if sel == home else away_f
+                best_simple["reasoning"] += (
+                    f" | forma: {stats.get('home_api_name', best_simple['home_team'])} ({home_f}) "
+                    f"vs {stats.get('away_api_name', best_simple['away_team'])} ({away_f})"
+                )
+                if h2h:
+                    best_simple["reasoning"] += f" | historial: {h2h}"
 
     return {
         "simple": best_simple,
@@ -197,17 +216,17 @@ def _find_best_simple(events: list[dict]) -> dict | None:
 
 
 def _build_best_combined(events: list[dict]) -> dict | None:
-    candidates: list[dict] = _find_best_simple(events)
-    if not candidates:
+    best_simple = _find_best_simple(events)
+    if not best_simple:
         return None
 
-    best_bookmaker = candidates["bookmaker"]
+    best_bookmaker = best_simple["bookmaker"]
     legs = []
 
     for event in events:
         if len(legs) >= 5:
             break
-        if event["event_id"] == candidates["event_id"]:
+        if event["event_id"] == best_simple["event_id"]:
             continue
         for bm in event["bookmakers"]:
             if bm.get("key", "") != best_bookmaker:

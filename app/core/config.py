@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     odds_api_key: str | None = Field(default=None, alias="ODDS_API_KEY")
     odds_api_base_url: str = Field(default="https://api.the-odds-api.com", alias="ODDS_API_BASE_URL")
 
+    football_api_key: str = Field(default="", alias="FOOTBALL_API_KEY")
+    football_api_base_url: str = Field(default="https://v3.football.api-sports.io", alias="FOOTBALL_API_BASE_URL")
+
     admin_telegram_id: int = Field(default=1519635728, alias="ADMIN_TELEGRAM_ID")
     cron_secret: str = Field(..., alias="CRON_SECRET", min_length=16)
 

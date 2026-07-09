@@ -144,12 +144,11 @@ def create_application() -> FastAPI:
     ) -> dict:
         _validate_cron_secret(secret)
 
-        from app.services.odds.client import get_odds
+        from app.services.odds.client import get_odds, SPORTS as ODDS_SPORTS
         from app.services.strategy.engine import analyze_and_recommend
 
         all_odds = {}
-        sports = ["soccer", "tennis", "basketball", "table_tennis"]
-        for sport in sports:
+        for sport in ODDS_SPORTS:
             try:
                 data = await get_odds(sport)
                 all_odds[sport] = data
@@ -162,7 +161,7 @@ def create_application() -> FastAPI:
                 await send_no_recommendation(telegram_app)
             return {"status": "sin_datos", "detail": "no se pudieron obtener odds"}
 
-        recommendation = analyze_and_recommend(all_odds)
+        recommendation = await analyze_and_recommend(all_odds)
         if recommendation and recommendation.get("simple"):
             if telegram_app:
                 await send_recommendation(telegram_app, recommendation)
