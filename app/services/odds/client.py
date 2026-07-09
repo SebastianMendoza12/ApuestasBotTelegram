@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 BASE_URL = settings.odds_api_base_url
 API_KEY = settings.odds_api_key
 SPORTS = ["soccer", "tennis", "basketball", "table_tennis"]
-BOOKMAKERS = "betano,betplay,codere"
-REGION = "eu"
+BOOKMAKERS = ""
+REGION = "eu,uk"
 MARKETS = "h2h,totals"
 
 
@@ -45,13 +45,14 @@ async def get_active_sports() -> list[dict]:
 async def get_odds(sport_name: str) -> list[dict]:
     sport = _sport_key(sport_name)
     url = f"{BASE_URL}/v4/sports/{sport}/odds"
-    params = {
+    params: dict[str, str] = {
         "apiKey": API_KEY,
         "regions": REGION,
         "markets": MARKETS,
-        "bookmakers": BOOKMAKERS,
         "oddsFormat": "decimal",
     }
+    if BOOKMAKERS:
+        params["bookmakers"] = BOOKMAKERS
     cache_key = f"odds_{sport_name}"
     cached = cache.get(cache_key)
     if cached:
