@@ -7,10 +7,12 @@ from typing import AsyncGenerator
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
+from sqlalchemy import text
 from telegram.ext import Application
 
 from app.core.config import settings
 from app.core.database import db_manager, init_db
+from app.models.prediction import Prediction, PredictionStatus
 from app.telegram.bot import create_bot_application, send_recommendation, send_no_recommendation, send_results_summary
 
 logging.basicConfig(
@@ -259,6 +261,14 @@ def create_application() -> FastAPI:
                 await send_results_summary(telegram_app, results)
 
         return {"status": "ok", "checked": len(results), "results": results}
+
+    @app.post("/admin/reset", tags=["Admin"])
+    async def admin_reset(secret: str = Query(..., description="cron_secret")) -> dict:
+        _validate_cron_secret(secret)
+        async with db_manager.session() as session:
+            await session.execute(text("TRUNCATE TABLE predictions RESTART IDENTITY CASCADE"))
+            await session.commit()
+        return {"status": "ok", "detail": "predicciones eliminadas, contador reiniciado"}
 
     return app
 

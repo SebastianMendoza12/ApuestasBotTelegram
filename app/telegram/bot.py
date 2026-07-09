@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from telegram import Update
@@ -14,6 +14,18 @@ from app.models.prediction import Prediction, PredictionStatus
 from app.telegram.handlers import register_handlers
 
 logger = logging.getLogger(__name__)
+
+COLOMBIA_OFFSET = timedelta(hours=-5)
+
+
+def _colombia_time(iso_str: str) -> str:
+    """Convierte ISO UTC a hora Colombia (UTC-5) para mostrar."""
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        co = dt + COLOMBIA_OFFSET
+        return co.strftime("%Y-%m-%d %H:%M")
+    except (ValueError, TypeError):
+        return iso_str[:16].replace("T", " ")
 
 BOOKMAKER_DISPLAY: dict[str, str] = {
     "pinnacle": "Pinnacle", "betfair_ex_uk": "Betfair", "betfair_ex_eu": "Betfair",
@@ -150,7 +162,7 @@ async def send_recommendation(application: Application, recommendation: dict) ->
     lines.append(f"{se} {simple['home_team']} vs {simple['away_team']}")
     lines.append(f"seleccion: {simple['selection']}")
     lines.append(f"cuota: @{simple['odds']} ({_disp_bm(simple['bookmaker'])})")
-    lines.append(f"inicio: {simple['event_start_time'][:16].replace('T', ' ')}")
+    lines.append(f"inicio: {_colombia_time(simple['event_start_time'])}")
     lines.append(f"\n\U0001f4c8 por que: {simple['reasoning']}")
 
     if combined:

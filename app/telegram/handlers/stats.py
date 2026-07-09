@@ -72,6 +72,9 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     net = float(returned) - float(invested)
     roi = round(net / float(invested) * 100, 1) if invested > 0 else 0
 
+    sign = "+" if net >= 0 else ""
+    roi_sign = "+" if roi >= 0 else ""
+
     message = (
         "ESTADISTICAS\n\n"
         f"total predicciones: {total}\n"
@@ -80,8 +83,8 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         f"pendientes: {pending}\n"
         f"porcentaje: {pct}%\n"
         f"racha actual: {streak}\n"
-        f"ganancia neta: +{net:.2f} unidades\n"
-        f"roi: +{roi}%"
+        f"ganancia neta: {sign}{net:.2f} unidades\n"
+        f"roi: {roi_sign}{roi}%"
     )
 
     await update.message.reply_text(message)
