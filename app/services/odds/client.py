@@ -13,7 +13,7 @@ BASE_URL = settings.odds_api_base_url
 API_KEY = settings.odds_api_key
 SPORTS = ["soccer", "tennis", "basketball", "table_tennis"]
 BOOKMAKERS = "betano,betplay,codere"
-REGION = "uk"
+REGION = "eu"
 MARKETS = "h2h,totals"
 
 
