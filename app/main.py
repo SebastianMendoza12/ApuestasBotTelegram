@@ -25,15 +25,32 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 telegram_app: Application | None = None
+_polling_task: asyncio.Task | None = None
 
 
 def _polling_error(error: Exception) -> None:
     logger.error("Error en polling de Telegram: %s", error, exc_info=error)
 
 
+async def _retry_polling_forever(app: Application) -> None:
+    while True:
+        try:
+            logger.info("intentando iniciar polling...")
+            await app.updater.start_polling(
+                allowed_updates=settings.telegram_allowed_updates,
+                drop_pending_updates=True,
+                error_callback=_polling_error,
+            )
+            logger.info("polling iniciado correctamente")
+            return
+        except Exception as e:
+            logger.warning("polling fallo, reintentando en 30s: %s", e)
+            await asyncio.sleep(30)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    global telegram_app
+    global telegram_app, _polling_task
 
     logger.info("iniciando aplicacion...")
 
@@ -54,23 +71,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             allowed_updates=settings.telegram_allowed_updates,
         )
     else:
-        logger.info("iniciando polling del bot...")
-        try:
-            await telegram_app.updater.start_polling(
-                allowed_updates=settings.telegram_allowed_updates,
-                drop_pending_updates=True,
-                error_callback=_polling_error,
-            )
-            logger.info("polling iniciado correctamente")
-        except Exception as e:
-            logger.error("error iniciando polling: %s", e)
-            raise
+        logger.info("iniciando polling en background...")
+        _polling_task = asyncio.create_task(_retry_polling_forever(telegram_app))
 
     logger.info("aplicacion iniciada correctamente")
 
     yield
 
     logger.info("iniciando apagado de la aplicacion...")
+
+    if _polling_task:
+        _polling_task.cancel()
+        try:
+            await _polling_task
+        except asyncio.CancelledError:
+            pass
 
     if telegram_app:
         if telegram_app.updater:
@@ -164,13 +179,23 @@ def create_application() -> FastAPI:
             return {"status": "sin_datos", "detail": "no se pudieron obtener odds"}
 
         recommendation = await analyze_and_recommend(all_odds, session=session)
-        if recommendation and recommendation.get("simple"):
+        has_any = recommendation and (recommendation.get("simple_covered") or recommendation.get("simple_noncovered"))
+        if has_any:
             if telegram_app:
-                await send_recommendation(telegram_app, recommendation)
+                for attempt in range(3):
+                    try:
+                        await send_recommendation(telegram_app, recommendation)
+                        break
+                    except Exception as e:
+                        if attempt < 2:
+                            logger.warning("envio fallo (intento %d/3), reintentando en 5s: %s", attempt + 1, e)
+                            await asyncio.sleep(5)
+                        else:
+                            logger.error("envio fallo tras 3 intentos: %s", e)
             return {
                 "status": "ok",
                 "total_events_analyzed": recommendation["total_events_analyzed"],
-                "has_simple": True,
+                "has_simple": has_any,
                 "has_combined": recommendation.get("combined") is not None,
             }
         else:

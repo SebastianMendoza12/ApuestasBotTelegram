@@ -168,9 +168,9 @@ async def analyze_and_recommend(all_odds: dict[str, list[dict]], session: str | 
     if not all_candidates:
         return None
 
-    best_simple = all_candidates[0]
     fixtures = await get_fixtures_for_range(2)
     best_simple_covered = None
+    best_simple_noncovered = None
 
     if fixtures:
         for c in all_candidates:
@@ -184,38 +184,31 @@ async def analyze_and_recommend(all_odds: dict[str, list[dict]], session: str | 
                 break
 
     if best_simple_covered:
-        best_simple = best_simple_covered
-        stats = await analyze_match(best_simple["home_team"], best_simple["away_team"])
+        stats = await analyze_match(best_simple_covered["home_team"], best_simple_covered["away_team"])
         if stats:
-            best_simple["stats"] = stats
-            h_f = stats.get("home_form", "")
-            a_f = stats.get("away_form", "")
-            h2h = stats.get("h2h_record", "")
-            if h_f and a_f:
-                best_simple["reasoning"] += (
-                    f" | forma: {stats.get('home_api_name', best_simple['home_team'])} ({h_f}) "
-                    f"vs {stats.get('away_api_name', best_simple['away_team'])} ({a_f})"
-                )
-                if h2h:
-                    best_simple["reasoning"] += f" | historial: {h2h}"
-    else:
-        filtered = [
-            c for c in all_candidates
-            if c["odds"] <= 5.0 and c["odds"] >= 1.3
-            and c["value_diff"] > 0.05 * c["avg_odds"]
-        ]
-        if not filtered:
-            return None
-        best_simple = filtered[0]
-        best_simple["note"] = "sin estadisticas (liga no cubierta)"
-        best_simple["reasoning"] += " | apuesta conservadora (sin datos del equipo)"
+            best_simple_covered["stats"] = stats
+
+    # non-covered: conservative filter, pick best that is NOT the covered one
+    noncovered = [
+        c for c in all_candidates
+        if c["odds"] <= 5.0 and c["odds"] >= 1.3
+        and c["value_diff"] > 0.05 * c["avg_odds"]
+        and (not best_simple_covered or c["event_id"] != best_simple_covered["event_id"])
+    ]
+    if noncovered:
+        best_simple_noncovered = noncovered[0]
+        best_simple_noncovered["note"] = "sin estadisticas (liga no cubierta)"
+
+    if not best_simple_covered and not best_simple_noncovered:
+        return None
 
     best_combined = None
-    if best_simple.get("stats"):
-        best_combined = _build_best_combined(all_events, best_simple)
+    if best_simple_covered and best_simple_covered.get("stats"):
+        best_combined = _build_best_combined(all_events, best_simple_covered)
 
     return {
-        "simple": best_simple,
+        "simple_covered": best_simple_covered,
+        "simple_noncovered": best_simple_noncovered,
         "combined": best_combined,
         "total_events_analyzed": len(all_events),
     }
@@ -237,10 +230,9 @@ def _get_all_candidates(events: list[dict]) -> list[dict]:
                         continue
                     sel = outcome.get("name", "")
                     point = outcome.get("point")
-                    if mk in ("h2h", "totals"):
-                        group_key = f"{mk}|{sel}"
-                    else:
-                        group_key = f"{mk}|{sel}|{point}" if point is not None else f"{mk}|{sel}"
+                    if mk in ("h2h", "spreads", "totals"):
+                        pt = f"{point}" if point is not None else ""
+                        group_key = f"{mk}|{sel}|{pt}"
                     entry = {"selection": sel, "price": Decimal(str(price)),
                              "market_key": mk, "bookmaker": bm_key,
                              "point": point}
@@ -252,26 +244,18 @@ def _get_all_candidates(events: list[dict]) -> list[dict]:
             for o in outcomes:
                 if o["price"] > avg_odds * Decimal("1.02"):
                     confidence = float((o["price"] - avg_odds) / avg_odds * 100)
-                    if o["market_key"] == "spreads":
-                        pt = o.get("point")
-                        pt_str = f"{pt:+.1f}" if pt is not None else ""
-                        reasoning = (
-                            f"cuota @{o['price']:.2f} por encima del promedio "
-                            f"@{avg_odds:.2f} | seleccion: {o['selection']} {pt_str}"
-                        )
-                    elif o["market_key"] == "totals":
-                        reasoning = (
-                            f"cuota @{o['price']:.2f} por encima del promedio "
-                            f"@{avg_odds:.2f} | {o['selection']}"
-                        )
+                    pt = o.get("point")
+                    if pt is not None and o["market_key"] == "spreads":
+                        pt_str = f" {pt:+.1f}"
+                    elif pt is not None and o["market_key"] == "totals":
+                        pt_str = f" {pt}"
                     else:
-                        reasoning = (
-                            f"cuota @{o['price']:.2f} por encima del promedio "
-                            f"@{avg_odds:.2f} entre las casas disponibles"
-                        )
-                    selection_display = o["selection"]
-                    if o["market_key"] == "spreads" and o.get("point") is not None:
-                        selection_display = f"{o['selection']} {o['point']:+.1f}"
+                        pt_str = ""
+                    sel_full = f"{o['selection']}{pt_str}"
+                    reasoning = (
+                        f"cuota {o['price']:.2f} por encima del promedio "
+                        f"{avg_odds:.2f} para {sel_full}"
+                    )
                     candidates.append({
                         "sport": event["sport"],
                         "sport_emoji": event["sport_emoji"],
@@ -280,7 +264,7 @@ def _get_all_candidates(events: list[dict]) -> list[dict]:
                         "away_team": event["away_team"],
                         "event_start_time": event["event_start_time"],
                         "event_id": event["event_id"],
-                        "selection": selection_display,
+                        "selection": sel_full,
                         "odds": float(o["price"]),
                         "bookmaker": o["bookmaker"],
                         "market": o["market_key"],
