@@ -196,6 +196,8 @@ async def send_recommendation(application: Application, recommendation: dict) ->
         h2h = stats.get("h2h_record", "")
         if h2h:
             lines.append(f"\U0001f4ca <b>H2H:</b> {h2h}")
+    elif simple.get("note"):
+        lines.append(f"\U0001f4ca <b>Stats:</b> {escape(simple['note'])}")
 
     lines.append("")
     lines.append(f"\U0001f4c8 <b>Analisis:</b> {escape(simple['reasoning'])}")

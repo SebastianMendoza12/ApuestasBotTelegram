@@ -4,6 +4,7 @@ from decimal import Decimal
 from statistics import mean
 
 from app.services.stats.analyzer import analyze_match
+from app.services.stats.client import get_fixtures_for_range, _match_team
 
 logger = logging.getLogger(__name__)
 
@@ -163,26 +164,44 @@ async def analyze_and_recommend(all_odds: dict[str, list[dict]], session: str | 
     if not all_events:
         return None
 
-    best_simple = _find_best_simple(all_events)
-    best_combined = _build_best_combined(all_events)
+    all_candidates = _get_all_candidates(all_events)
+    if not all_candidates:
+        return None
 
-    if best_simple:
+    best_simple = all_candidates[0]
+    fixtures = await get_fixtures_for_range(2)
+    best_simple_covered = None
+
+    if fixtures:
+        for c in all_candidates:
+            home_info = _match_team(c["home_team"], fixtures)
+            away_info = _match_team(c["away_team"], fixtures)
+            if home_info and away_info:
+                c["home_api_name"] = home_info[1]
+                c["away_api_name"] = away_info[1]
+                c["match_id"] = home_info[2]
+                best_simple_covered = c
+                break
+
+    if best_simple_covered:
+        best_simple = best_simple_covered
         stats = await analyze_match(best_simple["home_team"], best_simple["away_team"])
         if stats:
             best_simple["stats"] = stats
-            home_f = stats.get("home_form", "")
-            away_f = stats.get("away_form", "")
+            h_f = stats.get("home_form", "")
+            a_f = stats.get("away_form", "")
             h2h = stats.get("h2h_record", "")
-            if home_f and away_f:
-                sel = best_simple["selection"].lower()
-                home = best_simple["home_team"].lower()
-                forma_sel = home_f if sel == home else away_f
+            if h_f and a_f:
                 best_simple["reasoning"] += (
-                    f" | forma: {stats.get('home_api_name', best_simple['home_team'])} ({home_f}) "
-                    f"vs {stats.get('away_api_name', best_simple['away_team'])} ({away_f})"
+                    f" | forma: {stats.get('home_api_name', best_simple['home_team'])} ({h_f}) "
+                    f"vs {stats.get('away_api_name', best_simple['away_team'])} ({a_f})"
                 )
                 if h2h:
                     best_simple["reasoning"] += f" | historial: {h2h}"
+    else:
+        best_simple["note"] = "sin estadisticas (liga no cubierta)"
+
+    best_combined = _build_best_combined(all_events, best_simple)
 
     return {
         "simple": best_simple,
@@ -191,7 +210,7 @@ async def analyze_and_recommend(all_odds: dict[str, list[dict]], session: str | 
     }
 
 
-def _find_best_simple(events: list[dict]) -> dict | None:
+def _get_all_candidates(events: list[dict]) -> list[dict]:
     candidates = []
     for event in events:
         for bm in event["bookmakers"]:
@@ -239,13 +258,12 @@ def _find_best_simple(events: list[dict]) -> dict | None:
                             "value_diff": float(o["price"] - avg_odds),
                         })
     if not candidates:
-        return None
+        return []
     candidates.sort(key=lambda x: x["value_diff"], reverse=True)
-    return candidates[0]
+    return candidates
 
 
-def _build_best_combined(events: list[dict]) -> dict | None:
-    best_simple = _find_best_simple(events)
+def _build_best_combined(events: list[dict], best_simple: dict | None) -> dict | None:
     if not best_simple:
         return None
 
