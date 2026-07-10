@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import time
 from datetime import date, timedelta
 
 import httpx
@@ -12,10 +14,28 @@ BASE_URL = settings.football_api_base_url
 API_KEY = settings.football_api_key
 HEADERS = {"X-Auth-Token": API_KEY} if API_KEY else {}
 
+# football-data.org plan gratis: 10 req/min. Con forma real + H2H ahora se
+# hacen hasta 3 llamadas por partido, asi que se espacian para no chocar
+# con el limite y perder recomendaciones por 429 silenciosos.
+_RATE_LOCK = asyncio.Lock()
+_LAST_CALL_TS = 0.0
+MIN_CALL_INTERVAL = 6.5  # segundos entre llamadas -> ~9.2 req/min, con margen
+
+
+async def _throttle() -> None:
+    global _LAST_CALL_TS
+    async with _RATE_LOCK:
+        now = time.monotonic()
+        wait = MIN_CALL_INTERVAL - (now - _LAST_CALL_TS)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _LAST_CALL_TS = time.monotonic()
+
 
 async def _fetch_matches(date_from: str, date_to: str) -> list[dict]:
     url = f"{BASE_URL}/matches"
     params = {"dateFrom": date_from, "dateTo": date_to}
+    await _throttle()
     async with httpx.AsyncClient(timeout=15, headers=HEADERS) as client:
         r = await client.get(url, params=params)
         if r.status_code != 200:
@@ -55,6 +75,7 @@ def _match_team(odds_name: str, matches: list[dict]) -> tuple[int, str, int] | N
 
 async def _fetch_h2h(match_id: int) -> list[dict]:
     url = f"{BASE_URL}/matches/{match_id}/head2head"
+    await _throttle()
     async with httpx.AsyncClient(timeout=15, headers=HEADERS) as client:
         r = await client.get(url, params={"limit": 5})
         if r.status_code != 200:
@@ -71,6 +92,7 @@ async def _fetch_team_recent_matches(team_id: int, limit: int = 6) -> list[dict]
         return cached
     url = f"{BASE_URL}/teams/{team_id}/matches"
     params = {"status": "FINISHED", "limit": limit}
+    await _throttle()
     async with httpx.AsyncClient(timeout=15, headers=HEADERS) as client:
         r = await client.get(url, params=params)
         if r.status_code != 200:

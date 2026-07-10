@@ -167,6 +167,7 @@ async def analyze_and_recommend(all_odds: dict[str, list[dict]], session: str | 
     all_candidates = _get_all_candidates(all_events)
     if not all_candidates:
         return None
+    logger.info("candidatos totales: %d", len(all_candidates))
 
     fixtures = await get_fixtures_for_range(2)
     covered_candidates: list[dict] = []
@@ -182,17 +183,30 @@ async def analyze_and_recommend(all_odds: dict[str, list[dict]], session: str | 
                 c["away_api_name"] = away_info[1]
                 c["match_id"] = home_info[2]
                 covered_candidates.append(c)
+    logger.info("fixtures obtenidos: %d | candidatos con cobertura: %d", len(fixtures), len(covered_candidates))
 
-    # 1 sola llamada de stats por partido (se cachea por evento, no por candidato)
+    # 1 sola llamada de stats por partido (se cachea por evento, no por candidato).
+    # Se limita la cantidad de eventos distintos analizados con stats completas
+    # para no disparar el tiempo total de la corrida (por el throttle de football-data.org)
+    # ni el consumo de requests; se prioriza por value_diff, que ya viene ordenado.
+    MAX_STATS_EVENTS = 10
     stats_by_event: dict[str, dict | None] = {}
     if covered_candidates:
         for c in covered_candidates:
             eid = c["event_id"]
             if eid not in stats_by_event:
-                stats_by_event[eid] = await analyze_match(c["home_team"], c["away_team"])
+                if len(stats_by_event) >= MAX_STATS_EVENTS:
+                    stats_by_event[eid] = None
+                else:
+                    stats_by_event[eid] = await analyze_match(c["home_team"], c["away_team"])
             c["stats"] = stats_by_event[eid]
 
         best_simple_covered = _rank_candidates_by_stats(covered_candidates)
+        logger.info(
+            "best_simple_covered: %s",
+            f"{best_simple_covered['home_team']} vs {best_simple_covered['away_team']} -> {best_simple_covered['selection']} (stats_score={best_simple_covered.get('stats_score')})"
+            if best_simple_covered else "None (ninguno paso el ranking)",
+        )
 
     # non-covered: conservador, solo como respaldo si no hay nada con stats
     noncovered = [
@@ -225,7 +239,7 @@ async def analyze_and_recommend(all_odds: dict[str, list[dict]], session: str | 
 VALUE_WEIGHT = 0.35
 STATS_WEIGHT = 0.65
 MIN_STATS_SCORE = 0.45  # por debajo de esto, las stats contradicen la seleccion
-ODDS_MIN, ODDS_MAX = 1.30, 4.50
+MIN_ODDS_COVERED = 1.10  # solo evita cuotas triviales (casi certeza, sin sentido recomendar)
 
 
 def _rank_candidates_by_stats(covered_candidates: list[dict]) -> dict | None:
@@ -234,7 +248,7 @@ def _rank_candidates_by_stats(covered_candidates: list[dict]) -> dict | None:
 
     scored: list[dict] = []
     for c in covered_candidates:
-        if not (ODDS_MIN <= c["odds"] <= ODDS_MAX):
+        if c["odds"] < MIN_ODDS_COVERED:
             continue
         value_score = max(0.0, min(1.0, (c["value_diff"] / c["avg_odds"]) / 0.30)) if c["avg_odds"] else 0.0
 
