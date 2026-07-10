@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from statistics import mean
 
-from app.services.stats.analyzer import analyze_match
+from app.services.stats.analyzer import analyze_match, stats_alignment_score
 from app.services.stats.client import get_fixtures_for_range, _match_team
 
 logger = logging.getLogger(__name__)
@@ -183,18 +183,18 @@ async def analyze_and_recommend(all_odds: dict[str, list[dict]], session: str | 
                 c["match_id"] = home_info[2]
                 covered_candidates.append(c)
 
-    # Try each covered candidate looking for one with H2H stats
+    # 1 sola llamada de stats por partido (se cachea por evento, no por candidato)
+    stats_by_event: dict[str, dict | None] = {}
     if covered_candidates:
         for c in covered_candidates:
-            c["stats"] = await analyze_match(c["home_team"], c["away_team"])
-            if c["stats"] and c["stats"].get("has_h2h"):
-                best_simple_covered = c
-                break
-        # fallback: first covered even without H2H
-        if not best_simple_covered:
-            best_simple_covered = covered_candidates[0]
+            eid = c["event_id"]
+            if eid not in stats_by_event:
+                stats_by_event[eid] = await analyze_match(c["home_team"], c["away_team"])
+            c["stats"] = stats_by_event[eid]
 
-    # non-covered: conservative filter, pick best that is NOT the covered one
+        best_simple_covered = _rank_candidates_by_stats(covered_candidates)
+
+    # non-covered: conservador, solo como respaldo si no hay nada con stats
     noncovered = [
         c for c in all_candidates
         if c["odds"] <= 5.0 and c["odds"] >= 1.3
@@ -218,6 +218,46 @@ async def analyze_and_recommend(all_odds: dict[str, list[dict]], session: str | 
         "combined": best_combined,
         "total_events_analyzed": len(all_events),
     }
+
+
+# Cuanto pesa cada componente en el score final. Las estadisticas pesan mas
+# que la cuota: el bot ya no elige "la cuota mas alta" por defecto.
+VALUE_WEIGHT = 0.35
+STATS_WEIGHT = 0.65
+MIN_STATS_SCORE = 0.45  # por debajo de esto, las stats contradicen la seleccion
+ODDS_MIN, ODDS_MAX = 1.30, 4.50
+
+
+def _rank_candidates_by_stats(covered_candidates: list[dict]) -> dict | None:
+    if not covered_candidates:
+        return None
+
+    scored: list[dict] = []
+    for c in covered_candidates:
+        if not (ODDS_MIN <= c["odds"] <= ODDS_MAX):
+            continue
+        value_score = max(0.0, min(1.0, (c["value_diff"] / c["avg_odds"]) / 0.30)) if c["avg_odds"] else 0.0
+
+        stats = c.get("stats")
+        s_score = stats_alignment_score(
+            stats, c["selection"], c["home_team"], c["away_team"], c["market_key"]
+        ) if stats else 0.5
+
+        composite = VALUE_WEIGHT * value_score + STATS_WEIGHT * s_score
+        c["value_score"] = round(value_score, 3)
+        c["stats_score"] = s_score
+        c["composite_score"] = round(composite, 3)
+        c["confidence"] = round(composite * 100, 1)
+        scored.append(c)
+
+    if not scored:
+        return None
+
+    # Primero intenta solo con candidatos que las stats respaldan (>= MIN_STATS_SCORE)
+    aligned = [c for c in scored if c["stats_score"] >= MIN_STATS_SCORE]
+    pool = aligned if aligned else scored
+    pool.sort(key=lambda x: x["composite_score"], reverse=True)
+    return pool[0]
 
 
 def _get_all_candidates(events: list[dict]) -> list[dict]:

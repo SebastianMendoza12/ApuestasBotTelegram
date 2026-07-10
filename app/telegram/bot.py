@@ -76,6 +76,14 @@ def _form_emoji(letter: str) -> str:
     return {"G": "\u2705", "E": "\u270d\ufe0f", "P": "\u274c"}.get(letter, letter)
 
 
+def _form_summary(name: str, form_str: str, n_matches: int) -> str | None:
+    if not form_str:
+        return None
+    emoji = "".join(_form_emoji(x) for x in form_str)
+    wins = form_str.count("G")
+    return f"{name} llega con {emoji} en sus ultimos {n_matches} partidos jugados ({wins} victorias)"
+
+
 def _build_bullets(simple: dict, is_covered: bool) -> list[str]:
     bullets = []
     league = simple.get("league", simple["sport"])
@@ -86,24 +94,36 @@ def _build_bullets(simple: dict, is_covered: bool) -> list[str]:
         s = simple["stats"]
         hn = s.get("home_api_name", simple["home_team"])
         an = s.get("away_api_name", simple["away_team"])
+
+        home_summary = _form_summary(hn, s.get("home_form", ""), s.get("home_form_matches", 0))
+        away_summary = _form_summary(an, s.get("away_form", ""), s.get("away_form_matches", 0))
+        if home_summary:
+            bullets.append(home_summary)
+        if away_summary:
+            bullets.append(away_summary)
+
         if s.get("has_h2h"):
-            hf = s.get("home_form", "")
-            af = s.get("away_form", "")
-            if hf and af:
-                h_emoji = "".join(_form_emoji(x) for x in hf)
-                a_emoji = "".join(_form_emoji(x) for x in af)
-                bullets.append(f"{hn} llega con forma {h_emoji} en sus ultimos {len(hf)} partidos")
-                bullets.append(f"{an} llega con forma {a_emoji} en sus ultimos {len(af)} partidos")
             h2h = s.get("h2h_record", "")
-            if h2h:
-                h_parts = h2h.split("-")
-                if len(h_parts) == 3 and h_parts[0] != "0":
-                    bullets.append(f"Historial directo: {hn} domina {h2h} en los ultimos 5 duelos")
-        if len(bullets) < 2:
+            h_parts = h2h.split("-")
+            if len(h_parts) == 3 and (h_parts[0] != "0" or h_parts[2] != "0"):
+                bullets.append(f"Historial directo: {hn} {h2h} {an} en los ultimos 5 duelos (V-E-D)")
+
+        if s.get("referee"):
+            bullets.append(f"Arbitro designado: {s['referee']}")
+
+        stats_score = simple.get("stats_score")
+        if stats_score is not None:
+            if stats_score >= 0.6:
+                bullets.append("Las estadisticas recientes respaldan claramente esta seleccion")
+            elif stats_score < 0.45:
+                bullets.append("Seleccion arriesgada: las estadisticas no favorecen claramente a este resultado, se prioriza por valor de cuota")
+
+        if not bullets:
             bullets.append(f"Partido valido de {league}")
-            bullets.append(f"Ambos equipos con cobertura estadistica de football-data.org")
+            bullets.append("Ambos equipos con cobertura estadistica de football-data.org")
+
         if avg and avg > 0:
-            bullets.append(f"Cuota {odds} por encima del promedio del mercado {avg:.2f}")
+            bullets.append(f"Cuota {odds} frente al promedio del mercado {avg:.2f}")
     elif not is_covered:
         bullets.append(f"Partido de {league} sin cobertura estadistica")
         bullets.append("Apuesta conservadora basada unicamente en valor de cuota")
