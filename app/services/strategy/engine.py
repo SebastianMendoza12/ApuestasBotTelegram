@@ -169,6 +169,7 @@ async def analyze_and_recommend(all_odds: dict[str, list[dict]], session: str | 
         return None
 
     fixtures = await get_fixtures_for_range(2)
+    covered_candidates: list[dict] = []
     best_simple_covered = None
     best_simple_noncovered = None
 
@@ -180,13 +181,18 @@ async def analyze_and_recommend(all_odds: dict[str, list[dict]], session: str | 
                 c["home_api_name"] = home_info[1]
                 c["away_api_name"] = away_info[1]
                 c["match_id"] = home_info[2]
+                covered_candidates.append(c)
+
+    # Try each covered candidate looking for one with H2H stats
+    if covered_candidates:
+        for c in covered_candidates:
+            c["stats"] = await analyze_match(c["home_team"], c["away_team"])
+            if c["stats"] and c["stats"].get("has_h2h"):
                 best_simple_covered = c
                 break
-
-    if best_simple_covered:
-        stats = await analyze_match(best_simple_covered["home_team"], best_simple_covered["away_team"])
-        if stats:
-            best_simple_covered["stats"] = stats
+        # fallback: first covered even without H2H
+        if not best_simple_covered:
+            best_simple_covered = covered_candidates[0]
 
     # non-covered: conservative filter, pick best that is NOT the covered one
     noncovered = [

@@ -78,27 +78,42 @@ def _form_emoji(letter: str) -> str:
 
 def _build_bullets(simple: dict, is_covered: bool) -> list[str]:
     bullets = []
-    if is_covered and simple.get("stats"):
-        s = simple["stats"]
-        hf = s.get("home_form", "")
-        af = s.get("away_form", "")
-        hn = s.get("home_api_name", simple["home_team"])
-        an = s.get("away_api_name", simple["away_team"])
-        if hf and af:
-            h_emoji = "".join(_form_emoji(x) for x in hf)
-            a_emoji = "".join(_form_emoji(x) for x in af)
-            bullets.append(f"{hn} llega con forma {h_emoji} en sus ultimos {len(hf)} partidos")
-            bullets.append(f"{an} llega con forma {a_emoji} en sus ultimos {len(af)} partidos")
-        h2h = s.get("h2h_record", "")
-        if h2h:
-            bullets.append(f"Historial directo: {hn} domina {h2h} en los ultimos 5 duelos")
-    if not is_covered:
-        bullets.append("Sin estadisticas disponibles para esta liga")
-        bullets.append("Apuesta conservadora basada en valor de cuota")
+    league = simple.get("league", simple["sport"])
     avg = simple.get("avg_odds")
     odds = simple["odds"]
-    if avg and avg > 0:
-        bullets.append(f"Cuota {odds} por encima del promedio del mercado {avg:.2f}")
+
+    if is_covered and simple.get("stats"):
+        s = simple["stats"]
+        hn = s.get("home_api_name", simple["home_team"])
+        an = s.get("away_api_name", simple["away_team"])
+        if s.get("has_h2h"):
+            hf = s.get("home_form", "")
+            af = s.get("away_form", "")
+            if hf and af:
+                h_emoji = "".join(_form_emoji(x) for x in hf)
+                a_emoji = "".join(_form_emoji(x) for x in af)
+                bullets.append(f"{hn} llega con forma {h_emoji} en sus ultimos {len(hf)} partidos")
+                bullets.append(f"{an} llega con forma {a_emoji} en sus ultimos {len(af)} partidos")
+            h2h = s.get("h2h_record", "")
+            if h2h:
+                h_parts = h2h.split("-")
+                if len(h_parts) == 3 and h_parts[0] != "0":
+                    bullets.append(f"Historial directo: {hn} domina {h2h} en los ultimos 5 duelos")
+        if len(bullets) < 2:
+            bullets.append(f"Partido valido de {league}")
+            bullets.append(f"Ambos equipos con cobertura estadistica de football-data.org")
+        if avg and avg > 0:
+            bullets.append(f"Cuota {odds} por encima del promedio del mercado {avg:.2f}")
+    elif not is_covered:
+        bullets.append(f"Partido de {league} sin cobertura estadistica")
+        bullets.append("Apuesta conservadora basada unicamente en valor de cuota")
+        if avg and avg > 0:
+            bullets.append(f"Cuota {odds} por encima del promedio del mercado {avg:.2f}")
+        else:
+            bullets.append("Seleccion con cuota dentro del rango conservador (1.3-5.0)")
+    else:
+        if avg and avg > 0:
+            bullets.append(f"Cuota {odds} por encima del promedio del mercado {avg:.2f}")
     return bullets
 
 
@@ -186,6 +201,7 @@ async def send_recommendation(application: Application, recommendation: dict) ->
 
         if pred_id:
             lines.append(f"<b>RECOMENDACION #{pred_id}</b> {se}")
+        lines.append(escape(league))
         lines.append(B)
         lines.append(f"{hf} {escape(ht)} \U0001f19a {escape(aw)} {af}")
         lines.append(B)
@@ -241,6 +257,7 @@ async def send_recommendation(application: Application, recommendation: dict) ->
 
         lines.append("")
         lines.append(f"\u26a0\ufe0f <b>ADICIONAL</b> {se}")
+        lines.append(escape(simple_noncovered.get("league", simple_noncovered["sport"])))
         lines.append(B)
         lines.append(f"{hf} {escape(ht)} \U0001f19a {escape(aw)} {af}")
         lines.append(B)

@@ -105,16 +105,15 @@ def _build_stats(
 
     home_form_str = "".join(home_form)
     away_form_str = "".join(away_form)
-    if not home_form_str and not away_form_str:
-        return {}
 
     return {
-        "home_form": home_form_str or "\u2014",
-        "away_form": away_form_str or "\u2014",
+        "home_form": home_form_str or "",
+        "away_form": away_form_str or "",
         "h2h_record": f"{home_wins}-{draws}-{away_wins}",
         "h2h_matches": h2h_list,
         "home_api_name": home_api_name,
         "away_api_name": away_api_name,
+        "has_h2h": bool(h2h_matches),
     }
 
 
@@ -137,11 +136,8 @@ async def get_match_stats(home_team: str, away_team: str) -> dict | None:
         if cached:
             return cached
         h2h_matches = await _fetch_h2h(match_id)
-        if not h2h_matches:
-            return None
         result = _build_stats(h2h_matches, home_api_name, away_api_name)
-        if result:
-            cache.set(cache_key, result)
+        cache.set(cache_key, result)
         return result
     except Exception as e:
         logger.warning("error obteniendo stats de %s vs %s: %s", home_team, away_team, e)
