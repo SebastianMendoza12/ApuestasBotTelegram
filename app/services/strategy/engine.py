@@ -199,9 +199,20 @@ async def analyze_and_recommend(all_odds: dict[str, list[dict]], session: str | 
                 if h2h:
                     best_simple["reasoning"] += f" | historial: {h2h}"
     else:
+        filtered = [
+            c for c in all_candidates
+            if c["odds"] <= 5.0 and c["odds"] >= 1.3
+            and c["value_diff"] > 0.05 * c["avg_odds"]
+        ]
+        if not filtered:
+            return None
+        best_simple = filtered[0]
         best_simple["note"] = "sin estadisticas (liga no cubierta)"
+        best_simple["reasoning"] += " | apuesta conservadora (sin datos del equipo)"
 
-    best_combined = _build_best_combined(all_events, best_simple)
+    best_combined = None
+    if best_simple.get("stats"):
+        best_combined = _build_best_combined(all_events, best_simple)
 
     return {
         "simple": best_simple,
