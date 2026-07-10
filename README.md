@@ -20,7 +20,7 @@ Bot automatico que analiza cuotas en tiempo real de +70 casas de apuestas, combi
 - Deteccion de **value betting**: cuotas por encima del promedio del mercado
 - Apuestas **simples** con analisis de valor
 - Apuestas **combinadas** (hasta 5 piernas, misma casa, mercado h2h)
-- Estadisticas de equipos: **forma** (G/E/P) e **historial H2H** via api-football
+- Estadisticas de equipos: **forma** (G/E/P) e **historial H2H** via football-data.org
 - Calculo de ROI, racha, unidades, % de aciertos
 - Cache inteligente (6h TTL) para minimizar consumo de APIs
 - Resultados verificables via endpoint `/cron/check`
@@ -100,7 +100,8 @@ Ver `.env.example` para todas las variables requeridas:
 | `TELEGRAM_BOT_TOKEN` | Token del bot de @BotFather |
 | `DATABASE_URL` | URL de conexion PostgreSQL (asyncpg) |
 | `ODDS_API_KEY` | API key de the-odds-api.com |
-| `FOOTBALL_API_KEY` | API key de api-football.com |
+| `FOOTBALL_API_KEY` | API key de football-data.org |
+| `FOOTBALL_API_BASE_URL` | https://api.football-data.org/v4 |
 | `ADMIN_TELEGRAM_ID` | Tu ID de Telegram (para recibir recomendaciones) |
 | `CRON_SECRET` | Secreto para proteger endpoints cron |
 
@@ -154,8 +155,10 @@ alembic/              # Migraciones de base de datos
 - Regiones: us, us2, uk, eu, au, fr, se (77 casas)
 - Mercado: h2h
 
-### Api-Football (api-football.com)
-- Plan gratis: 100 requests/dia
-- Uso estimado: ~18 requests/dia
-- Funciones: obtener fixtures del dia, historial H2H (ultimos 5), forma de equipos
+### Football-Data.org (football-data.org)
+- Plan gratis: 12 competiciones (10 req/min)
+- Ligas cubiertas: Premier League, La Liga, Bundesliga, Serie A, Ligue 1,
+  Champions League, Eredivisie, Primeira Liga, Championship,
+  Campeonato Brasileiro Serie A, World Cup, European Championship
+- Funciones: fixtures, H2H (head-to-head), forma de equipos
 - Cache: 6h TTL para fixtures y H2H
