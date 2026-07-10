@@ -115,8 +115,8 @@ async def send_recommendation(application: Application, recommendation: dict) ->
             home_team=simple["home_team"],
             away_team=simple["away_team"],
             event_start_time=datetime.fromisoformat(simple["event_start_time"]),
-            market="h2h",
-            market_key="h2h",
+            market=simple.get("market", "h2h"),
+            market_key=simple.get("market_key", "h2h"),
             selection=simple["selection"],
             odds=Decimal(str(simple["odds"])),
             bookmaker=simple["bookmaker"],
@@ -181,7 +181,13 @@ async def send_recommendation(application: Application, recommendation: dict) ->
     lines.append("")
     lines.append(f"{se} <b>{ht} vs {aw}</b>")
     lines.append("")
-    lines.append(f"\U0001f3af <b>Seleccion:</b> {sel}")
+    mk = simple.get("market_key", "h2h")
+    if mk == "spreads":
+        lines.append(f"\U0001f4c8 <b>Handicap:</b> {sel}")
+    elif mk == "totals":
+        lines.append(f"\U0001f4c8 <b>Total:</b> {sel}")
+    else:
+        lines.append(f"\U0001f3af <b>Seleccion:</b> {sel}")
     lines.append(f"\U0001f4b0 <b>Cuota:</b> <code>@{simple['odds']}</code> ({bm})")
     lines.append(f"\u23f0 <b>Inicio:</b> {_colombia_time(simple['event_start_time'])}")
 

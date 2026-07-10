@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import sys
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
@@ -230,19 +231,53 @@ def create_application() -> FastAPI:
                     if home_score is None or away_score is None:
                         continue
 
+                    import re
+                    hs = int(home_score)
+                    aws = int(away_score)
+
                     for p in pending:
                         if p.event_id != event_id:
                             continue
-                        pred_selection = p.selection.lower()
+                        pred_selection = p.selection.strip().lower()
                         home_name = (p.home_team or "").lower()
                         away_name = (p.away_team or "").lower()
+                        mk = (p.market_key or "h2h").lower()
 
-                        if pred_selection == home_name:
-                            won = int(home_score) > int(away_score)
-                        elif pred_selection == away_name:
-                            won = int(away_score) > int(home_score)
+                        if mk == "totals":
+                            m = re.match(r"(over|under)\s+([\d.]+)", pred_selection)
+                            if m:
+                                direction = m.group(1)
+                                threshold = float(m.group(2))
+                                total = hs + aws
+                                won = (direction == "over" and total > threshold) or \
+                                      (direction == "under" and total < threshold)
+                            else:
+                                won = False
+                        elif mk == "spreads":
+                            parts = pred_selection.rsplit(None, 1)
+                            if len(parts) == 2:
+                                team_part = parts[0]
+                                try:
+                                    hc = float(parts[1])
+                                except ValueError:
+                                    won = False
+                                else:
+                                    if team_part == home_name:
+                                        margin = hs - aws
+                                    elif team_part == away_name:
+                                        margin = aws - hs
+                                    else:
+                                        margin = 0
+                                    won = margin > hc if hc >= 0 else margin > hc
+                            else:
+                                won = False
                         else:
-                            won = False
+                            if pred_selection == home_name:
+                                won = hs > aws
+                            elif pred_selection == away_name:
+                                won = aws > hs
+                            else:
+                                won = False
 
                         p.status = PredictionStatus.WON if won else PredictionStatus.LOST
                         p.units_returned = (p.odds * p.units_staked) if won else Decimal("0")

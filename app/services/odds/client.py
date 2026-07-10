@@ -14,7 +14,7 @@ SPORTS = ["soccer"]
 # SPORTS = ["soccer", "tennis", "basketball", "table_tennis"]  # reactivar cuando se agreguen estadisticas de otros deportes
 BOOKMAKERS = ""
 REGION = "us,us2,uk,eu,au,fr,se"
-MARKETS = "h2h,totals"
+MARKETS = "h2h,spreads,totals"
 
 
 def _sport_key(sport_name: str) -> str:

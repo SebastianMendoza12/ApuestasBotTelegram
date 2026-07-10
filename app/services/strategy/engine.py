@@ -224,50 +224,73 @@ async def analyze_and_recommend(all_odds: dict[str, list[dict]], session: str | 
 def _get_all_candidates(events: list[dict]) -> list[dict]:
     candidates = []
     for event in events:
+        all_outcomes: dict[str, list[dict]] = {}
         for bm in event["bookmakers"]:
             bm_key = bm.get("key", "").lower()
             for market in bm.get("markets", []):
-                if market.get("key") != "h2h":
+                mk = market.get("key")
+                if mk not in ("h2h", "spreads", "totals"):
                     continue
-                odds_list = []
                 for outcome in market.get("outcomes", []):
                     price = outcome.get("price")
                     if not price:
                         continue
-                    odds_list.append({
-                        "selection": outcome.get("name"),
-                        "price": Decimal(str(price)),
-                        "market_key": "h2h",
-                        "bookmaker": bm_key,
-                    })
-                if len(odds_list) < 2:
-                    continue
-                avg_odds = mean(o["price"] for o in odds_list)
-                for o in odds_list:
-                    if o["price"] > avg_odds * Decimal("1.02"):
-                        confidence = float((o["price"] - avg_odds) / avg_odds * 100)
+                    sel = outcome.get("name", "")
+                    point = outcome.get("point")
+                    if mk in ("h2h", "totals"):
+                        group_key = f"{mk}|{sel}"
+                    else:
+                        group_key = f"{mk}|{sel}|{point}" if point is not None else f"{mk}|{sel}"
+                    entry = {"selection": sel, "price": Decimal(str(price)),
+                             "market_key": mk, "bookmaker": bm_key,
+                             "point": point}
+                    all_outcomes.setdefault(group_key, []).append(entry)
+        for group_key, outcomes in all_outcomes.items():
+            if len(outcomes) < 2:
+                continue
+            avg_odds = mean(o["price"] for o in outcomes)
+            for o in outcomes:
+                if o["price"] > avg_odds * Decimal("1.02"):
+                    confidence = float((o["price"] - avg_odds) / avg_odds * 100)
+                    if o["market_key"] == "spreads":
+                        pt = o.get("point")
+                        pt_str = f"{pt:+.1f}" if pt is not None else ""
+                        reasoning = (
+                            f"cuota @{o['price']:.2f} por encima del promedio "
+                            f"@{avg_odds:.2f} | seleccion: {o['selection']} {pt_str}"
+                        )
+                    elif o["market_key"] == "totals":
+                        reasoning = (
+                            f"cuota @{o['price']:.2f} por encima del promedio "
+                            f"@{avg_odds:.2f} | {o['selection']}"
+                        )
+                    else:
                         reasoning = (
                             f"cuota @{o['price']:.2f} por encima del promedio "
                             f"@{avg_odds:.2f} entre las casas disponibles"
                         )
-                        candidates.append({
-                            "sport": event["sport"],
-                            "sport_emoji": event["sport_emoji"],
-                            "league": event["league"],
-                            "home_team": event["home_team"],
-                            "away_team": event["away_team"],
-                            "event_start_time": event["event_start_time"],
-                            "event_id": event["event_id"],
-                            "selection": o["selection"],
-                            "odds": float(o["price"]),
-                            "bookmaker": o["bookmaker"],
-                            "market": "h2h",
-                            "market_key": "h2h",
-                            "confidence": round(confidence, 1),
-                            "reasoning": reasoning,
-                            "avg_odds": float(avg_odds),
-                            "value_diff": float(o["price"] - avg_odds),
-                        })
+                    selection_display = o["selection"]
+                    if o["market_key"] == "spreads" and o.get("point") is not None:
+                        selection_display = f"{o['selection']} {o['point']:+.1f}"
+                    candidates.append({
+                        "sport": event["sport"],
+                        "sport_emoji": event["sport_emoji"],
+                        "league": event["league"],
+                        "home_team": event["home_team"],
+                        "away_team": event["away_team"],
+                        "event_start_time": event["event_start_time"],
+                        "event_id": event["event_id"],
+                        "selection": selection_display,
+                        "odds": float(o["price"]),
+                        "bookmaker": o["bookmaker"],
+                        "market": o["market_key"],
+                        "market_key": o["market_key"],
+                        "point": o.get("point"),
+                        "confidence": round(confidence, 1),
+                        "reasoning": reasoning,
+                        "avg_odds": float(avg_odds),
+                        "value_diff": float(o["price"] - avg_odds),
+                    })
     if not candidates:
         return []
     candidates.sort(key=lambda x: x["value_diff"], reverse=True)
