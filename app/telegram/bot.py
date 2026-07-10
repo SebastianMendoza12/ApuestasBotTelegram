@@ -95,6 +95,20 @@ async def send_recommendation(application: Application, recommendation: dict) ->
     chat_id = settings.admin_telegram_id
 
     async with db_manager.session() as session:
+        from sqlalchemy import select
+        existing = (await session.execute(
+            select(Prediction).where(
+                Prediction.event_id == simple["event_id"],
+                Prediction.selection == simple["selection"],
+                Prediction.bookmaker == simple["bookmaker"],
+                Prediction.is_combined == False,
+                Prediction.status == PredictionStatus.PENDING,
+            )
+        )).scalars().first()
+        if existing:
+            logger.info("prediccion duplicada, se omite: %s", existing.id)
+            return
+
         pred = Prediction(
             sport=simple["sport"],
             league=simple.get("league", ""),

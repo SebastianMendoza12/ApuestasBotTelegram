@@ -1,4 +1,5 @@
 import logging
+from html import escape
 
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
@@ -76,18 +77,18 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     roi_sign = "+" if roi >= 0 else ""
 
     message = (
-        "ESTADISTICAS\n\n"
-        f"total predicciones: {total}\n"
-        f"aciertos: {won}\n"
-        f"fallos: {lost}\n"
-        f"pendientes: {pending}\n"
-        f"porcentaje: {pct}%\n"
-        f"racha actual: {streak}\n"
-        f"ganancia neta: {sign}{net:.2f} unidades\n"
-        f"roi: {roi_sign}{roi}%"
+        "<b>ESTADISTICAS</b>\n\n"
+        f"<b>Total predicciones:</b> {total}\n"
+        f"<b>Aciertos:</b> {won}\n"
+        f"<b>Fallos:</b> {lost}\n"
+        f"<b>Pendientes:</b> {pending}\n"
+        f"<b>Porcentaje:</b> {pct}%\n"
+        f"<b>Racha actual:</b> {streak}\n"
+        f"<b>Ganancia neta:</b> {sign}{net:.2f} unidades\n"
+        f"<b>ROI:</b> {roi_sign}{roi}%"
     )
 
-    await update.message.reply_text(message)
+    await update.message.reply_text(message, parse_mode="HTML")
 
 
 stats_handler = CommandHandler("stats", stats_command)

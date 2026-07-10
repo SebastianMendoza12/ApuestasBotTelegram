@@ -1,4 +1,5 @@
 import logging
+from html import escape
 
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
@@ -6,6 +7,7 @@ from telegram.ext import CommandHandler, ContextTypes
 from app.core.config import settings
 from app.core.database import db_manager
 from app.models.prediction import Prediction, PredictionStatus
+from app.telegram.bot import _disp_bm
 
 logger = logging.getLogger(__name__)
 
@@ -34,18 +36,26 @@ async def historial_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text("No hay predicciones registradas aun.")
         return
 
-    status_map = {PredictionStatus.PENDING: "PEND", PredictionStatus.WON: "GANADA",
-                  PredictionStatus.LOST: "PERDIDA", PredictionStatus.VOID: "ANULADA"}
+    status_map = {
+        PredictionStatus.PENDING: "\u23f3 PEND",
+        PredictionStatus.WON: "\u2705 GANADA",
+        PredictionStatus.LOST: "\u274c PERDIDA",
+        PredictionStatus.VOID: "\u26a0 ANULADA",
+    }
     lines = []
     for p in predictions:
         s = status_map.get(p.status, "?")
-        lines.append(f"{s} {p.home_team} vs {p.away_team} -> {p.selection} @ {p.odds} ({p.bookmaker})")
+        ht = escape(p.home_team or "")
+        aw = escape(p.away_team or "")
+        sel = escape(p.selection or "")
+        bm = _disp_bm(p.bookmaker)
+        lines.append(f"{s} {ht} vs {aw} \u2192 <b>{sel}</b> <code>@{p.odds:.2f}</code> ({bm})")
 
     message = "\n".join(lines)
     pct = round(won / total * 100, 1) if total > 0 else 0
-    message += f"\n\nstats: {won} ganadas | {lost} perdidas | {pct}%"
+    message += f"\n\n<b>Stats:</b> {won} ganadas | {lost} perdidas | {pct}%"
 
-    await update.message.reply_text(message)
+    await update.message.reply_text(message, parse_mode="HTML")
 
 
 historial_handler = CommandHandler("historial", historial_command)
